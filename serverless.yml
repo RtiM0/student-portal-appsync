@@ -1,0 +1,101 @@
+service: student-portal-appsync
+
+frameworkVersion: '3'
+
+useDotenv: true
+
+provider:
+  name: aws
+  runtime: nodejs14.x
+  region: ap-south-1
+  iam:
+    role:
+      statements:
+        - Effect: Allow
+          Action:
+            - dynamodb:Query
+            - dynamodb:Scan
+            - dynamodb:GetItem
+            - dynamodb:PutItem
+            - dynamodb:UpdateItem
+            - dynamodb:DeleteItem
+          Resource:
+            - Fn::GetAtt: [ StudentsTable, Arn ]
+        - Effect: Allow
+          Action:
+            - cognito-idp:*
+          Resource: "*"
+  environment:
+    STUDENTS_TABLE: ${self:custom.tableName}
+    USERPOOL_ID: ${env:USERPOOL_ID}
+
+custom:
+  tableName: 'students-table-${sls:stage}'
+  appSync:
+    name: ${self:service}-${sls:stage}
+    authenticationType: API_KEY
+    mappingTemplates:
+      - type: Mutation
+        field: createUser
+        request: "createUser-request.txt"
+        response: false
+        dataSource: SPAppSyncFunction
+      - type: Mutation
+        field: updateStudent
+        request: "updateStudent-request.txt"
+        response: false
+        dataSource: SPAppSyncFunction
+      - type: Mutation
+        field: addDetail
+        request: "addDetail-request.txt"
+        response: false
+        dataSource: SPAppSyncFunction
+      - type: Mutation
+        field: deleteDetail
+        request: "deleteDetail-request.txt"
+        response: "deleteDetail-response.txt"
+        dataSource: SPTABLE      
+      - type: Query
+        field: getUsers
+        request: "getUsers-request.txt"
+        response: false
+        dataSource: SPAppSyncFunction
+      - type: Query
+        field: getUser
+        request: "getUser-request.txt"
+        response: false
+        dataSource: SPAppSyncFunction
+    dataSources:
+      - type: AWS_LAMBDA
+        name: SPAppSyncFunction
+        config:
+          functionName: resolver
+      - type: AMAZON_DYNAMODB
+        name: SPTABLE
+        config:
+          tableName: { Ref: StudentsTable }
+
+functions:
+  resolver:
+    handler: handler.handler
+
+resources:
+  Resources:
+    StudentsTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        AttributeDefinitions:
+          - AttributeName: studentID
+            AttributeType: S
+          - AttributeName: name
+            AttributeType: S
+        KeySchema:
+          - AttributeName: studentID
+            KeyType: HASH
+          - AttributeName: name
+            KeyType: RANGE
+        BillingMode: PAY_PER_REQUEST
+        TableName: ${self:custom.tableName}
+
+plugins:
+  - serverless-appsync-plugin
